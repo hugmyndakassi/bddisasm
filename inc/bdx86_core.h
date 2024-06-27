@@ -373,17 +373,15 @@ typedef ND_UINT32 ND_REG_SIZE;
 // Sets the sign of the sz bytes long value x.
 #define ND_SET_SIGN(sz, x)          ND_SIGN_EX(sz, x)
 
-#ifdef BIG_ENDIAN
-#define ND_FETCH_64(b)              ((ND_UINT64)ND_FETCH_32((char *)b) | ((ND_UINT64)ND_FETCH_32((char *)b + 4) << 32))
-#define ND_FETCH_32(b)              ((ND_UINT32)ND_FETCH_16((char *)b) | ((ND_UINT32)ND_FETCH_16((char *)b + 2) << 16))
-#define ND_FETCH_16(b)              ((((char *)b)[0]) | (((char *)b)[1] << 8))
-#define ND_FETCH_8(b)               (*((char *)b))
-#else
-#define ND_FETCH_64(b)              (*((ND_UINT64 *)(b)))
-#define ND_FETCH_32(b)              (*((ND_UINT32 *)(b)))
-#define ND_FETCH_16(b)              (*((ND_UINT16 *)(b)))
-#define ND_FETCH_8(b)               (*((ND_UINT8 *)(b)))
-#endif
+
+#define ND_FETCH_64(b)              (((ND_UINT64)ND_FETCH_32((const ND_UINT8 *)(b))) | \
+                                    (((ND_UINT64)ND_FETCH_32((const ND_UINT8 *)(b) + 4) << 32)))
+#define ND_FETCH_32(b)              (((ND_UINT32)ND_FETCH_16((const ND_UINT8 *)(b))) | \
+                                    (((ND_UINT32)ND_FETCH_16((const ND_UINT8 *)(b) + 2) << 16)))
+#define ND_FETCH_16(b)              (((ND_UINT16)ND_FETCH_8 ((const ND_UINT8 *)(b))) | \
+                                    (((ND_UINT16)ND_FETCH_8 ((const ND_UINT8 *)(b) + 1) << 8)))
+#define ND_FETCH_8(b)               (*((const ND_UINT8 *)(b)))
+
 
 
 //

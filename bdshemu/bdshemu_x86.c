@@ -77,18 +77,18 @@ enum
 
 
 #define GET_OP(ctx, op, val) {                                                                                         \
-    SHEMU_STATUS status = ShemuX86GetOperandValue(ctx, op, val);                                                       \
-    if (SHEMU_SUCCESS != status)                                                                                       \
+    shstatus = ShemuX86GetOperandValue(ctx, op, val);                                                                  \
+    if (SHEMU_SUCCESS != shstatus)                                                                                     \
     {                                                                                                                  \
-        return status;                                                                                                 \
+        return shstatus;                                                                                               \
     }                                                                                                                  \
 }
 
 #define SET_OP(ctx, op, val) {                                                                                         \
-    SHEMU_STATUS status = ShemuX86SetOperandValue(ctx, op, val);                                                       \
-    if (SHEMU_SUCCESS != status)                                                                                       \
+    shstatus = ShemuX86SetOperandValue(ctx, op, val);                                                                  \
+    if (SHEMU_SUCCESS != shstatus)                                                                                     \
     {                                                                                                                  \
-        return status;                                                                                                 \
+        return shstatus;                                                                                               \
     }                                                                                                                  \
 }
 
@@ -1442,26 +1442,23 @@ ShemuX86SetOperandValue(
 //
 static void
 ShemuX86Multiply64Unsigned(
-    ND_UINT64 Operand1,
-    ND_UINT64 Operand2,
-    ND_UINT64 *ResHigh,
-    ND_UINT64 *ResLow
+    SHEMU_VALUE *Operand1,
+    SHEMU_VALUE *Operand2,
+    SHEMU_VALUE *Result
     )
 {
-    ND_UINT64 xLow = (ND_UINT64)(ND_UINT32)Operand1;
-    ND_UINT64 xHigh = Operand1 >> 32;
-    ND_UINT64 yLow = (ND_UINT64)(ND_UINT32)Operand2;
-    ND_UINT64 yHigh = Operand2 >> 32;
+    ND_UINT64 p0, p1, p2, p3, p4;
 
-    ND_UINT64 p0 = xLow * yLow;
-    ND_UINT64 p1 = xLow * yHigh;
-    ND_UINT64 p2 = xHigh * yLow;
-    ND_UINT64 p3 = xHigh * yHigh;
+    // Multiply the 4 32-bit parts into 4 partial products.
+    p0 = (ND_UINT64)Operand1->Value.Dwords[0] * (ND_UINT64)Operand2->Value.Dwords[0];
+    p1 = (ND_UINT64)Operand1->Value.Dwords[0] * (ND_UINT64)Operand2->Value.Dwords[1];
+    p2 = (ND_UINT64)Operand1->Value.Dwords[1] * (ND_UINT64)Operand2->Value.Dwords[0];
+    p3 = (ND_UINT64)Operand1->Value.Dwords[1] * (ND_UINT64)Operand2->Value.Dwords[1];
+    p4 = (((p0 >> 32) + (p1 & 0xFFFFFFFF) + (p2 & 0xFFFFFFFF)) >> 32) & 0xFFFFFFFF;
 
-    ND_UINT32 cy = (ND_UINT32)(((p0 >> 32) + (ND_UINT32)p1 + (ND_UINT32)p2) >> 32);
-
-    *ResLow = p0 + (p1 << 32) + (p2 << 32);
-    *ResHigh = p3 + (p1 >> 32) + (p2 >> 32) + cy;
+    // Fill in the final result (low & high 64-bit parts).
+    Result->Value.Qwords[0] = p0 + (p1 << 32) + (p2 << 32);
+    Result->Value.Qwords[1] = p3 + (p1 >> 32) + (p2 >> 32) + p4;
 }
 
 
@@ -1470,15 +1467,24 @@ ShemuX86Multiply64Unsigned(
 //
 static void
 ShemuX86Multiply64Signed(
-    ND_SINT64 Operand1,
-    ND_SINT64 Operand2,
-    ND_SINT64 *ResHigh,
-    ND_SINT64 *ResLow
+    SHEMU_VALUE *Operand1,
+    SHEMU_VALUE *Operand2,
+    SHEMU_VALUE *Result
     )
 {
-    ShemuX86Multiply64Unsigned((ND_UINT64)Operand1, (ND_UINT64)Operand2, (ND_UINT64 *)ResHigh, (ND_UINT64 *)ResLow);
-    if (Operand1 < 0LL) *ResHigh -= Operand2;
-    if (Operand2 < 0LL) *ResHigh -= Operand1;
+    ShemuX86Multiply64Unsigned(Operand1, Operand2, Result);
+
+    // Negate, if needed.
+    if (ND_GET_SIGN(8, Operand1->Value.Qwords[0]))
+    {
+        Result->Value.Qwords[1] -= Operand2->Value.Qwords[0];
+    }
+
+    // Negate, if needed.
+    if (ND_GET_SIGN(8, Operand2->Value.Qwords[0]))
+    {
+        Result->Value.Qwords[1] -= Operand1->Value.Qwords[0];
+    }
 }
 
 
@@ -2784,13 +2790,11 @@ check_far_branch:
             {
                 if (ND_INS_MUL == Context->Arch.X86.Instruction.Instruction)
                 {
-                    ShemuX86Multiply64Unsigned(dst.Value.Qwords[0], src.Value.Qwords[0],
-                                            &res.Value.Qwords[1], &res.Value.Qwords[0]);
+                    ShemuX86Multiply64Unsigned(&dst, &src, &res);
                 }
                 else
                 {
-                    ShemuX86Multiply64Signed(dst.Value.Qwords[0], src.Value.Qwords[0],
-                                          (ND_SINT64*)&res.Value.Qwords[1], (ND_SINT64*)&res.Value.Qwords[0]);
+                    ShemuX86Multiply64Signed(&dst, &src, &res);
                 }
             }
 
